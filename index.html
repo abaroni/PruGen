@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Hello, world!</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="description" content="" />
+  <style>
+
+  </style>
+  <script type="text/javascript">
+
+        //ETRACTED FROM https://github.com/meemoo/meemooapp/blob/main/src/nodes/image-monochrome-worker.js
+
+        // Atkinson thanks to https://github.com/ticky/canvas-dither/blob/master/canvas-image-worker.js
+        // Flickr's Atkinson was easy to understand but melted with some fps https://github.com/flickr/FlickrDithr/blob/master/dither.js
+        // Bayer parsed from http://en.wikipedia.org/wiki/Ordered_dithering
+
+        // var bayerMap = [
+        //   [  1,  9,  3, 11 ],
+        //   [ 13,  5, 15,  7 ],
+        //   [  4, 12,  2, 10 ],
+        //   [ 16,  8, 14,  6 ]
+        // ];
+
+        var bayerThresholdMap = [
+          [  15, 135,  45, 165 ],
+          [ 195,  75, 225, 105 ],
+          [  60, 180,  30, 150 ],
+          [ 240, 120, 210,  90 ]
+        ];
+
+        var lumR = [];
+        var lumG = [];
+        var lumB = [];
+        for (var i=0; i<256; i++) {
+          lumR[i] = i*0.299;
+          lumG[i] = i*0.587;
+          lumB[i] = i*0.114;
+        }
+
+        function monochrome(imageData, threshold, type){
+
+          var imageDataLength = imageData.data.length;
+
+          // Greyscale luminance (sets r pixels to luminance of rgb)
+          for (var i = 0; i <= imageDataLength; i += 4) {
+            imageData.data[i] = Math.floor(lumR[imageData.data[i]] + lumG[imageData.data[i+1]] + lumB[imageData.data[i+2]]);
+          }
+
+          var w = imageData.width;
+          var newPixel, err;
+
+          for (var currentPixel = 0; currentPixel <= imageDataLength; currentPixel+=4) {
+
+            if (type === "none") {
+              // No dithering
+              imageData.data[currentPixel] = imageData.data[currentPixel] < threshold ? 0 : 255;
+            } else if (type === "bayer") {
+              // 4x4 Bayer ordered dithering algorithm
+              var x = currentPixel/4 % w;
+              var y = Math.floor(currentPixel/4 / w);
+              var map = Math.floor( (imageData.data[currentPixel] + bayerThresholdMap[x%4][y%4]) / 2 );
+              imageData.data[currentPixel] = (map < threshold) ? 0 : 255;
+            } else if (type === "floydsteinberg") {
+              // Floyd–Steinberg dithering algorithm
+              newPixel = imageData.data[currentPixel] < 129 ? 0 : 255;
+              err = Math.floor((imageData.data[currentPixel] - newPixel) / 16);
+              imageData.data[currentPixel] = newPixel;
+
+              imageData.data[currentPixel       + 4 ] += err*7;
+              imageData.data[currentPixel + 4*w - 4 ] += err*3;
+              imageData.data[currentPixel + 4*w     ] += err*5;
+              imageData.data[currentPixel + 4*w + 4 ] += err*1;
+            } else {
+              // Bill Atkinson's dithering algorithm
+              newPixel = imageData.data[currentPixel] < 129 ? 0 : 255;
+              err = Math.floor((imageData.data[currentPixel] - newPixel) / 8);
+              imageData.data[currentPixel] = newPixel;
+
+              imageData.data[currentPixel       + 4 ] += err;
+              imageData.data[currentPixel       + 8 ] += err;
+              imageData.data[currentPixel + 4*w - 4 ] += err;
+              imageData.data[currentPixel + 4*w     ] += err;
+              imageData.data[currentPixel + 4*w + 4 ] += err;
+              imageData.data[currentPixel + 8*w     ] += err;
+            }
+
+            // Set g and b pixels equal to r
+            imageData.data[currentPixel + 1] = imageData.data[currentPixel + 2] = imageData.data[currentPixel];
+          }
+
+          return imageData;
+        }
+
+        async function codeAddress() {
+          const canvasIN = document.getElementById("canvas");
+          const canvasOUT = document.getElementById("output");
+          const ctxIN = canvasIN.getContext("2d");
+          const ctxOUT = canvasOUT.getContext("2d");
+          const imageElement = document.getElementById("imgElementId");
+
+
+          const imgBitmap = await window.createImageBitmap(imageElement)
+
+          //ctxIN.drawImage(imgBitmap, 0, 0, 692, 369, 0, 0, 280, 192)
+          ctxIN.drawImage(imgBitmap, 0, 0, imageElement.naturalWidth,  imageElement.naturalHeight, 0, 0, 280, 192)
+          imageElement.width = 280
+          imageElement.height = 192
+          const imgData = ctxIN.getImageData(0,0,280,192)
+
+          const imgDataDithered = monochrome(imgData,0.5,"atk")
+          const imgBitmapDithered = await window.createImageBitmap(imgDataDithered)
+          ctxIN.drawImage(imgBitmapDithered, 0, 0, 280, 192, 0, 0, 280, 192)
+
+
+
+          let str = []
+          for(let row=0; row<192;row++){
+            let rowStr = ""
+            let DEBUGSUM = 0
+            let prevcount = 0
+            let prevcol = "B"
+
+            for(let col=0; col<280;col++){
+
+              const pixel = ctxIN.getImageData(col, row , 1, 1)
+              const data = pixel.data
+
+              const isBlack = function(data){
+                return data[0]==0
+              }
+              const isWhite = function(data){
+                return !isBlack(data)
+              }
+
+              let currentCol  = isBlack(data)?"0":"1"
+
+              rowStr += currentCol
+
+            }
+            //str += `${row} ${DEBUGSUM+prevcount}\n`
+            //str+=  `${1000+row*10} DATA ${rowStr}${prevcount}\n`
+            str.push(rowStr)
+          }
+
+
+          const processed = str.map(function(S,row){
+            let ROW=[`${1000+(row*10)} DATA "`]
+            //console.log(S)
+            for(let i=0;i<40;i++){
+              //console.log(S.substring(i*7,(i*7)+7))
+              //console.log(number)
+              //console.log(number)
+              //console.log(""+(number & (1 << 0))+ " "+(number & (1 << 1)) )
+              let input = S.substring(i*7,(i*7)+7)
+              //input = input.replace(/0/g,"Z").replace(/1/g,"0").replace(/Z/g,"1")
+              let tmpStr = input[6]+input[5]+input[4]+input[3]+input[2]+input[1]+input[0]
+              input = tmpStr
+              let number = parseInt(input,2)
+              //number = 1
+              ctxOUT.fillStyle = "black";
+              ctxOUT.fillRect(7*i + 0,row,7,1)
+              ctxOUT.fillStyle = "white"
+
+              if (number & (1 << 0)) ctxOUT.fillRect(7*i + 0,row,1,1)
+              if (number & (1 << 1)) ctxOUT.fillRect(7*i + 1,row,1,1)
+              if (number & (1 << 2)) ctxOUT.fillRect(7*i + 2,row,1,1)
+              if (number & (1 << 3)) ctxOUT.fillRect(7*i + 3,row,1,1)
+              if (number & (1 << 4)) ctxOUT.fillRect(7*i + 4,row,1,1)
+              if (number & (1 << 5)) ctxOUT.fillRect(7*i + 5,row,1,1)
+              if (number & (1 << 6)) ctxOUT.fillRect(7*i + 6,row,1,1)
+
+              if(number == 0) ROW.push( "A" )
+              if(number == 1) ROW.push( "B" )
+              if(number == 2) ROW.push( "C" )
+              if(number == 3) ROW.push( "D" )
+              if(number == 4) ROW.push( "E" )
+              if(number == 5) ROW.push( "F" )
+              if(number == 6) ROW.push( "G" )
+              if(number == 7) ROW.push( "H" )
+              if(number == 8) ROW.push( "I" )
+              if(number == 9) ROW.push( "J" )
+              if(number >=10 && number<=99) ROW.push( number )
+              if(number == 100) ROW.push( "a" )
+              if(number == 101) ROW.push( "b" )
+              if(number == 102) ROW.push( "c" )
+              if(number == 103) ROW.push( "d" )
+              if(number == 104) ROW.push( "e" )
+              if(number == 105) ROW.push( "f" )
+              if(number == 106) ROW.push( "g" )
+              if(number == 107) ROW.push( "h" )
+              if(number == 108) ROW.push( "i" )
+              if(number == 109) ROW.push( "j" )
+              if(number == 110) ROW.push( "k" )
+              if(number == 111) ROW.push( "l" )
+              if(number == 112) ROW.push( "m" )
+              if(number == 113) ROW.push( "n" )
+              if(number == 114) ROW.push( "o" )
+              if(number == 115) ROW.push( "p" )
+              if(number == 116) ROW.push( "q" )
+              if(number == 117) ROW.push( "r" )
+              if(number == 118) ROW.push( "s" )
+              if(number == 119) ROW.push( "t" )
+              if(number == 120) ROW.push( "u" )
+              if(number == 121) ROW.push( "v" )
+              if(number == 122) ROW.push( "w" )
+              if(number == 123) ROW.push( "x" )
+              if(number == 124) ROW.push( "y" )
+              if(number == 125) ROW.push( "z" )
+              if(number == 126) ROW.push( "{" )
+              if(number == 127) ROW.push( "|" )
+
+
+            }
+            ROW.push( `"\n` )
+            return ROW.join("")
+          })
+          const PROGRAM_PREDATA=`10 LOMEM:24576\n20 HGR2\n`
+          const PROGRAM_POSTDATA=`
+5100 DIM CARR(40) : CARR(0) = 0
+5103 FOR ROW=0 TO 191
+5104 PTR = 16384
+5105 IF (ROW>=0 AND ROW<=63) THEN N = ROW
+5106 IF (ROW>=64 AND ROW<=127) THEN N = ROW-64 : PTR = PTR+40
+5107 IF (ROW>=128 AND ROW<=191) THEN N = ROW-128 : PTR = PTR+80
+5111 IF(N>=0 AND N=<7) THEN NMOD8=N
+5112 IF(N>=8 AND N=<15) THEN NMOD8=N-8
+5113 IF(N>=16 AND N=<23) THEN NMOD8=N-16
+5114 IF(N>=24 AND N=<31) THEN NMOD8=N-24
+5115 IF(N>=32 AND N=<39) THEN NMOD8=N-32
+5116 IF(N>=40 AND N=<47) THEN NMOD8=N-40
+5117 IF(N>=48 AND N=<55) THEN NMOD8=N-48
+5118 IF(N>=56 AND N=<63) THEN NMOD8=N-56
+5120 PTR=PTR+(INT(N/8)*128)+(NMOD8*1024)
+5130 PRINT "ROW ";ROW;" ";PTR;" "
+5140 READ S$
+5150 GOSUB 6000
+5170 FOR OFFSET=0 TO 39
+5180 POKE PTR+OFFSET,CARR(OFFSET)
+5190 NEXT OFFSET
+5196 NEXT ROW
+5197 INPUT PS$
+5198 TEXT
+5199 END
+
+6000 REM - SUB PROCESS S$
+6003 V=127
+6004 OFFSET=0
+6005 PRINT ROW
+6010 SL = LEN(S$)
+6020 FOR SIDX=1 TO SL
+6030 THISC$ = MID$(S$,SIDX,1)
+6050 CHR = ASC(THISC$)
+6070 IF CHR>=48 AND CHR=<57 THEN V=VAL(MID$(S$,SIDX,2)):SIDX=SIDX+1
+6080 IF CHR>=97 AND CHR=<124 THEN V=CHR+3
+6090 IF CHR>=65 AND CHR=<74 THEN V=CHR-65
+6095 CARR(OFFSET)=V
+6100 OFFSET=OFFSET+1
+6150 NEXT SIDX
+6199 RETURN
+`
+          const PROGRAM = PROGRAM_PREDATA+processed.join("")+PROGRAM_POSTDATA
+          const result = {expanded:str, processed:processed, program:PROGRAM}
+          window.result = result
+
+          const programElement = document.getElementById("program");
+          programElement.textContent = PROGRAM
+
+
+        }
+
+        function setSrc(img,src){
+          return new Promise((resolve, reject) => {
+            img.src = src
+            img.onload = () => resolve(img)
+            img.onerror = reject
+          })
+        }
+
+        async function getFile() {
+          const imageElement = document.getElementById("imgElementId");
+          // Open file picker and destructure the result the first handle
+          const file = await legacyShowOpenFilePicker()
+          console.log(file)
+
+
+          const read = (blob) => new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (event) => resolve(event.target.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          })
+
+          const readResult = await read(file)
+
+
+          await setSrc(imageElement,readResult)
+          codeAddress()
+          return
+        }
+
+        //EXTRACTED FROM https://github.com/GoogleChromeLabs/browser-fs-access/blob/main/src/legacy/file-open.mjs
+        const legacyShowOpenFilePicker = async (options = [{}]) => {
+            if (!Array.isArray(options)) {
+              options = [options];
+            }
+            return new Promise((resolve, reject) => {
+              const input = document.createElement('input');
+              input.type = 'file';
+              const accept = [
+                ...options.map((option) => option.mimeTypes || []),
+                ...options.map((option) => option.extensions || []),
+              ].join();
+              input.multiple = options[0].multiple || false;
+              // Empty string allows everything.
+              input.accept = accept || '';
+              // Append to the DOM, else Safari on iOS won't fire the `change` event
+              // reliably.
+              input.style.display = 'none';
+              document.body.append(input);
+              const _reject = () => cleanupListenersAndMaybeReject(reject);
+              const _resolve = (value) => {
+                if (typeof cleanupListenersAndMaybeReject === 'function') {
+                  cleanupListenersAndMaybeReject();
+                }
+                resolve(value);
+              };
+              const cleanupListenersAndMaybeReject =
+                options[0].legacySetup &&
+                options[0].legacySetup(_resolve, _reject, input);
+
+              const cancelDetector = () => {
+                window.removeEventListener('focus', cancelDetector);
+                input.remove();
+              };
+
+              input.addEventListener('click', () => {
+                window.addEventListener('focus', cancelDetector);
+              });
+
+              input.addEventListener('change', () => {
+                window.removeEventListener('focus', cancelDetector);
+                input.remove();
+                _resolve(input.multiple ? Array.from(input.files) : input.files[0]);
+              });
+
+              if ('showPicker' in HTMLInputElement.prototype) {
+                input.showPicker();
+              } else {
+                input.click();
+              }
+            });
+          };
+
+  </script>
+</head>
+<body>
+  <h1>PruGen</h1>
+  <h3>v1.0</h3>
+  <p>This page lets you load an image, resizes it to be 280px by 192px, converts it in monochrome, applies dithering and generates APPLESOFT code that will let you print it on devices such as the Apple2 computer</p>
+  <details>
+    <summary>Why and how this page exists?</summary>
+      <br>
+      This code generator has been developed in my spare time. My family preserved an old Apple 2e, and I've spent a weekend with my father to clean it and start it up.
+      Once I've started it up, i've been curious on what it was capable of, and I've been reading APPLESOFT documentation
+      (mainly the <a href="https://mirrors.apple2.org.za/Apple%20II%20Documentation%20Project/Software/Languages/Applesoft%20BASIC/Manuals/Applesoft%20II%20BASIC%20Programming%20Reference%20Manual.pdf" target="_blank">official manual</a> and <a href="https://www.calormen.com/jsbasic/reference.html"  target="_blank">quick reference</a>).
+      I've been playing with the graphics mode and I decided that an interesting challenge would have been to display a picture. The solution I found is composed by three parts:
+      <br><br>
+      1) I wrote an APPLESOFT program that is capable of drawing an image using the HGR2 mode (280*192). The image is represented by 192 strings, one per row. Working with limited amounts of memory some basic compression tricks are used to reduce the size of these strings. I used <a href="https://github.com/AppleWin/AppleWin"  target="_blank">the AppleWin Apple 2 emulator</a> to test and debug the code.
+      <br>
+      2) I wrote some vanilla javascript code (with a couple of pieces extracted from open source projects, specifically <a <a href="https://github.com/meemoo/meemooapp/blob/main/src/nodes/image-monochrome-worker.js"  target="_blank">the dithering algorithm</a> and the <a href="https://github.com/GoogleChromeLabs/browser-fs-access/blob/main/src/legacy/file-open.mjs"  target="_blank">file load capability</a>) to generate the 192 strings that represent an image. This JS code is not perfect (it's not even good), but I like the fact that it lives in this HTML page and does not need any server. It's all in the browser. This page should work on your computer without internet if you save it locally. I like the idea of this being minimal and self contained, thus this page has no styling at all.
+      <br>
+      3) Once I had everything working in the emulator, i wanted to run in on my phisical system. This has been achieved maily through the ingenuity of my father: he used the <a href="https://github.com/AppleWin/AppleWin"  target="_blank">AppleWin emulator</a> to copy and paste the code generated by this page. He then saved it to a DSK file.
+      He then used a second emulator (<a href="https://agatemulator.sourceforge.net/english.html"  target="_blank">Agat</a>) that does not support copy and paste, but can read DSK files and can generate audio files that emulate the tape output of the real Apple 2 computer. He then loaded the audio file on a phone with a 3.5 jack output, connected the phone with the Apple 2e through a 3.5mm jack cable, and used the "LOAD" command on the computer and played the audio from the phone. At this point the program was in memory, and just by typing "RUN" could be executed.
+      <br><br>
+      A couple of final notes: if you run this program on a real or emulated device, it assumes you have a monochorome monitor. This page is available on my public github. The name "PruGen" has been suggested by my wife, it has no real meaning but sounded right for a code generator.
+  </details>
+  <br>
+  <button onclick="getFile()">Load image</button>
+  <br>
+  <img id="imgElementId" width=280 height=192 style="display: none;" src="" />
+  <canvas id="canvas" width=280 height=192 style="display: none;"></canvas>
+  <canvas id="output" width=280 height=192 ></canvas>
+  <br>
+  <div><pre id="program"></pre></div>
+</body>
+</html>
