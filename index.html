@@ -39,6 +39,28 @@
           lumB[i] = i*0.114;
         }
 
+
+        window.onload = function(){
+          const copyButton = document.getElementById("copyButton");
+          copyButton.disabled = true;
+        }
+
+        function copyToClipboard(){
+          const programElement = document.getElementById("program");
+
+          navigator.clipboard.writeText(programElement.textContent.replaceAll("\n","\r\n")).then(
+            () => {
+              /* clipboard successfully set */
+              console.log("Copy OK")
+            },
+            () => {
+              /* clipboard write failed */
+              console.log("Copy failed!")
+            },
+          );
+
+        }
+
         function monochrome(imageData, threshold, type){
 
           var imageDataLength = imageData.data.length;
@@ -190,8 +212,7 @@
             if( (S.length % keyLen) != 0 ){
               const finalBitsLength = S.length % keyLen
               const finalBits = S.substr(S.length-finalBitsLength).padStart(keyLen,"0")
-              console.log(finalBits)
-              console.log(map[finalBits])
+
               subbed+=map[finalBits]
             }
 
@@ -258,9 +279,10 @@
           const result = {expanded:str, processed:processed, program:PROGRAM}
           window.result = result
 
+          const copyButton = document.getElementById("copyButton");
           const programElement = document.getElementById("program");
           programElement.textContent = PROGRAM
-
+          if (window.isSecureContext) copyButton.disabled = false;
 
         }
 
@@ -276,7 +298,7 @@
           const imageElement = document.getElementById("imgElementId");
           // Open file picker and destructure the result the first handle
           const file = await legacyShowOpenFilePicker()
-          console.log(file)
+
 
 
           const read = (blob) => new Promise((resolve, reject) => {
@@ -380,8 +402,8 @@
       A couple of final notes: if you run this program on a real or emulated device, it assumes you have a monochorome monitor. This page is <a href="https://github.com/abaroni/PruGen" target="_blank">available on my public github</a>. The name "PruGen" has been suggested by my wife, it has no real meaning but sounded right for a code generator.
   </details>
   <br>
-  <button onclick="getFile()">Load image</button>
-  <br>
+  <button onclick="getFile()">Load image</button> <button id="copyButton" onclick="copyToClipboard()" disabled>Copy program</button>
+  <br><br>
   <img id="imgElementId" width=280 height=192 style="display: none;" src="" />
   <canvas id="canvas" width=280 height=192 style="display: none;"></canvas>
   <canvas id="output" width=280 height=192 ></canvas>
