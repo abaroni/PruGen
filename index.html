@@ -143,11 +143,17 @@
             //str+=  `${1000+row*10} DATA ${rowStr}${prevcount}\n`
             str.push(rowStr)
           }
+          window.str = str
 
-
+          const keyLen =6
+          const map = {}
+          for(i=0;i<Math.pow(2,keyLen);i++){
+            map[i.toString(2).padStart(keyLen,"0")] = String.fromCharCode(35+i)
+          }
+          window.map = map
           const processed = str.map(function(S,row){
-            let ROW=[`${1000+(row*10)} DATA "`]
-            //console.log(S)
+            let ROW=[`${1000+(row*10)} DATA"`]
+
             for(let i=0;i<40;i++){
               //console.log(S.substring(i*7,(i*7)+7))
               //console.log(number)
@@ -170,96 +176,84 @@
               if (number & (1 << 4)) ctxOUT.fillRect(7*i + 4,row,1,1)
               if (number & (1 << 5)) ctxOUT.fillRect(7*i + 5,row,1,1)
               if (number & (1 << 6)) ctxOUT.fillRect(7*i + 6,row,1,1)
-
-              if(number == 0) ROW.push( "A" )
-              if(number == 1) ROW.push( "B" )
-              if(number == 2) ROW.push( "C" )
-              if(number == 3) ROW.push( "D" )
-              if(number == 4) ROW.push( "E" )
-              if(number == 5) ROW.push( "F" )
-              if(number == 6) ROW.push( "G" )
-              if(number == 7) ROW.push( "H" )
-              if(number == 8) ROW.push( "I" )
-              if(number == 9) ROW.push( "J" )
-              if(number >=10 && number<=99) ROW.push( number )
-              if(number == 100) ROW.push( "a" )
-              if(number == 101) ROW.push( "b" )
-              if(number == 102) ROW.push( "c" )
-              if(number == 103) ROW.push( "d" )
-              if(number == 104) ROW.push( "e" )
-              if(number == 105) ROW.push( "f" )
-              if(number == 106) ROW.push( "g" )
-              if(number == 107) ROW.push( "h" )
-              if(number == 108) ROW.push( "i" )
-              if(number == 109) ROW.push( "j" )
-              if(number == 110) ROW.push( "k" )
-              if(number == 111) ROW.push( "l" )
-              if(number == 112) ROW.push( "m" )
-              if(number == 113) ROW.push( "n" )
-              if(number == 114) ROW.push( "o" )
-              if(number == 115) ROW.push( "p" )
-              if(number == 116) ROW.push( "q" )
-              if(number == 117) ROW.push( "r" )
-              if(number == 118) ROW.push( "s" )
-              if(number == 119) ROW.push( "t" )
-              if(number == 120) ROW.push( "u" )
-              if(number == 121) ROW.push( "v" )
-              if(number == 122) ROW.push( "w" )
-              if(number == 123) ROW.push( "x" )
-              if(number == 124) ROW.push( "y" )
-              if(number == 125) ROW.push( "z" )
-              if(number == 126) ROW.push( "{" )
-              if(number == 127) ROW.push( "|" )
-
-
             }
-            ROW.push( `"\n` )
+
+            let subbed = "";
+            for (let i = 0; i+keyLen <= S.length; i += keyLen) {
+              const group = S.substr(i,keyLen).split("").reverse().join("")
+              if (!(group in map)) {
+                throw new Error(`Invalid bit group: ${group} at position ${i}`);
+              }
+              subbed += map[group];
+            }
+
+            if( (S.length % keyLen) != 0 ){
+              const finalBitsLength = S.length % keyLen
+              const finalBits = S.substr(S.length-finalBitsLength).padStart(keyLen,"0")
+              console.log(finalBits)
+              console.log(map[finalBits])
+              subbed+=map[finalBits]
+            }
+
+            ROW.push( `${subbed}"\n` )
             return ROW.join("")
           })
-          const PROGRAM_PREDATA=`10 LOMEM:24576\n20 HGR2\n`
-          const PROGRAM_POSTDATA=`
-5100 DIM CARR(40) : CARR(0) = 0
-5103 FOR ROW=0 TO 191
-5104 PTR = 16384
-5105 IF (ROW>=0 AND ROW<=63) THEN N = ROW
-5106 IF (ROW>=64 AND ROW<=127) THEN N = ROW-64 : PTR = PTR+40
-5107 IF (ROW>=128 AND ROW<=191) THEN N = ROW-128 : PTR = PTR+80
-5111 IF(N>=0 AND N=<7) THEN NMOD8=N
-5112 IF(N>=8 AND N=<15) THEN NMOD8=N-8
-5113 IF(N>=16 AND N=<23) THEN NMOD8=N-16
-5114 IF(N>=24 AND N=<31) THEN NMOD8=N-24
-5115 IF(N>=32 AND N=<39) THEN NMOD8=N-32
-5116 IF(N>=40 AND N=<47) THEN NMOD8=N-40
-5117 IF(N>=48 AND N=<55) THEN NMOD8=N-48
-5118 IF(N>=56 AND N=<63) THEN NMOD8=N-56
-5120 PTR=PTR+(INT(N/8)*128)+(NMOD8*1024)
-5130 PRINT "ROW ";ROW;" ";PTR;" "
-5140 READ S$
-5150 GOSUB 6000
-5170 FOR OFFSET=0 TO 39
-5180 POKE PTR+OFFSET,CARR(OFFSET)
-5190 NEXT OFFSET
-5196 NEXT ROW
-5197 INPUT PS$
-5198 TEXT
-5199 END
+          const PROGRAM_PREDATA=`
+10 LOMEM:24576
+20 HGR2
 
-6000 REM - SUB PROCESS S$
-6003 V=127
-6004 OFFSET=0
-6005 PRINT ROW
-6010 SL = LEN(S$)
-6020 FOR SIDX=1 TO SL
-6030 THISC$ = MID$(S$,SIDX,1)
-6050 CHR = ASC(THISC$)
-6070 IF CHR>=48 AND CHR=<57 THEN V=VAL(MID$(S$,SIDX,2)):SIDX=SIDX+1
-6080 IF CHR>=97 AND CHR=<124 THEN V=CHR+3
-6090 IF CHR>=65 AND CHR=<74 THEN V=CHR-65
-6095 CARR(OFFSET)=V
-6100 OFFSET=OFFSET+1
-6150 NEXT SIDX
-6199 RETURN
+510 DIM CARR(42)
+520 FOR ROW=0 TO 191
+530  PTR% = 16384
+540  IF (ROW>=0 AND ROW<=63) THEN N% = ROW
+550  IF (ROW>=64 AND ROW<=127) THEN N% = ROW-64 : PTR% = PTR%+40
+560  IF (ROW>=128 AND ROW<=191) THEN N% = ROW-128 : PTR% = PTR%+80
+570  IF(N%>=0 AND N%=<7) THEN NMOD8%=N%
+580  IF(N%>=8 AND N%=<15) THEN NMOD8%=N%-8
+590  IF(N%>=16 AND N%=<23) THEN NMOD8%=N%-16
+600  IF(N%>=24 AND N%=<31) THEN NMOD8%=N%-24
+610  IF(N%>=32 AND N%=<39) THEN NMOD8%=N%-32
+620  IF(N%>=40 AND N%=<47) THEN NMOD8%=N%-40
+630  IF(N%>=48 AND N%=<55) THEN NMOD8%=N%-48
+640  IF(N%>=56 AND N%=<63) THEN NMOD8%=N%-56
+650  PTR%=PTR%+(INT(N%/8)*128)+(NMOD8%*1024)
+660
+670  READ S$ : CI% = 0
+680
+690
+700  FOR IDX=1 TO 49-LEN(S$) : S$ = S$ + "#" : NEXT IDX
+705  FOR IDX=0 TO 42 STEP 7
+710   N1%=ASC(MID$(S$,IDX+1,1))-35
+715   N2%=ASC(MID$(S$,IDX+2,1))-35
+720   N3%=ASC(MID$(S$,IDX+3,1))-35
+725   N4%=ASC(MID$(S$,IDX+4,1))-35
+730   N5%=ASC(MID$(S$,IDX+5,1))-35
+735   N6%=ASC(MID$(S$,IDX+6,1))-35
+740   N7%=ASC(MID$(S$,IDX+7,1))-35
+745
+750   M1% = N2% - INT(N2%/2)*2
+755   M2% = N3% - INT(N3%/4)*4
+760   M3% = N4% - INT(N4%/8)*8
+765   M4% = N5% - INT(N5%/16)*16
+770   M5% = N6% - INT(N6%/32)*32
+775   M6% = N7%
+780
+785   POKE PTR%+CI%,INT( N1%   + (M1% *64) )
+790   POKE PTR%+CI%+1,INT( N2%/2 + (M2% *32) )
+795   POKE PTR%+CI%+2,INT( N3%/4 + (M3% *16) )
+800   POKE PTR%+CI%+3,INT( N4%/8 + (M4% *8)  )
+810   POKE PTR%+CI%+4,INT( N5%/16 + (M5% *4) )
+820   POKE PTR%+CI%+5,INT( N6%/32 + (M6% *2) )
+830   CI% = CI%+6
+840
+850  NEXT IDX
+930 NEXT ROW
+940 INPUT PS$
+950 TEXT
+960 END
 `
+          const PROGRAM_POSTDATA=``
+          window.processed = processed
           const PROGRAM = PROGRAM_PREDATA+processed.join("")+PROGRAM_POSTDATA
           const result = {expanded:str, processed:processed, program:PROGRAM}
           window.result = result
@@ -357,8 +351,17 @@
 </head>
 <body>
   <h1>PruGen</h1>
-  <h3>v1.0</h3>
+  <h3>v1.5</h3>
   <p>This page lets you load an image, resizes it to be 280px by 192px, converts it in monochrome, applies dithering and generates APPLESOFT code that will let you print it on devices such as the Apple2 computer</p>
+  <details>
+    <summary>What's new in version 1.5?</summary>
+      <br>
+      Version 1.0 was prone to issues with images that generated bigger program. I changed the original "compression" algorithm with a decent encoding.
+      <br>
+      The challenge of decoding in APPLESOFT is that everything becomes unbearably slow and there is no support for boolean algebra.
+      <br>
+  </details>
+  <br>
   <details>
     <summary>Why and how this page exists?</summary>
       <br>
